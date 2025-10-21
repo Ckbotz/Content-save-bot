@@ -5,6 +5,7 @@
 from pyrogram import Client, idle
 from config import API_ID, API_HASH, BOT_TOKEN, STRING_SESSION, LOGIN_SYSTEM
 import asyncio
+from aiohttp import web
 
 # Create clients but don't start them yet
 if STRING_SESSION is not None and LOGIN_SYSTEM == False:
@@ -39,6 +40,20 @@ class Bot(Client):
         print('Bot Stopped 👋')
 
 
+# Simple web server for hosting (port 8080)
+async def handle(request):
+    return web.Response(text="Bot is alive ✅")
+
+async def run_web_server():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    print("Web server running on port 8080 🌐")
+
+
 async def main():
     bot = Bot()
     await bot.start()
@@ -46,6 +61,9 @@ async def main():
     if TechVJUser is not None:
         await TechVJUser.start()
         print("User Client Started ✅")
+
+    # Start web server
+    asyncio.create_task(run_web_server())
 
     await idle()  # Keeps both running
 
