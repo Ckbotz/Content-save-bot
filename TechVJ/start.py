@@ -136,7 +136,7 @@ async def set_sleep(client: Client, message: Message):
             )
             return
         
-        sleep_values = [int(x) for x in parts if x.isdigit() and 1 <= int(x) <= 60]
+        sleep_values = [int(x) for x in parts if x.isdigit() and 1 <= int(x) <= 1000]
         
         if not sleep_values:
             await message.reply("❌ Please provide valid sleep values between 1-60 seconds!")
