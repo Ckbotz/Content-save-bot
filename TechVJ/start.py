@@ -31,7 +31,7 @@ WORDS_TO_REMOVE = [
 ]
 
 # Permanent thumbnail URL (leave empty string "" to disable)
-PERMANENT_THUMBNAIL_URL = "https://example.com/your-thumbnail.jpg"
+PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 # =========================================
 
 
