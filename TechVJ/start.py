@@ -620,60 +620,75 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                     ph_path = None
                     
             try:
-                # Upload the file (await completes when upload is done)
-                await client.send_document(
-                    chat,
-                    file,
-                    thumb=ph_path,
-                    caption=caption,
-                    reply_to_message_id=message.id,
-                    parse_mode=enums.ParseMode.HTML,
-                    progress=progress,
-                    progress_args=[message, "up"],
-                )
-                upload_success = True
-            except Exception as e:
-                if ERROR_MESSAGE:
-                    await client.send_message(
-                        message.chat.id, f"Error: {e}", reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML
-                    )
-                    
-            # Only remove non-permanent thumbnails
-            if ph_path and ph_path != permanent_thumb and os.path.exists(ph_path):
-                os.remove(ph_path)
+    # Upload the file (await completes when upload is done)
+    await client.send_document(
+        chat,
+        file,
+        thumb=ph_path,
+        caption=caption,
+        reply_to_message_id=message.id,
+        parse_mode=enums.ParseMode.HTML,
+        progress=progress,
+        progress_args=[message, "up"],
+    )
+    upload_success = True
+except Exception as e:
+    if ERROR_MESSAGE:
+        await client.send_message(
+            message.chat.id,
+            f"Error: {e}",
+            reply_to_message_id=message.id,
+            parse_mode=enums.ParseMode.HTML
+        )
 
-    elif msg_type == "Video":
-        try:
-            # Use permanent thumbnail if available, otherwise get from video
-            if permanent_thumb:
-                ph_path = permanent_thumb
-            else:
-                try:
-                    ph_path = await acc.download_media(msg.video.thumbs[0].file_id)
-                except:
-                    ph_path = None
-                    
+# Only remove non-permanent thumbnails
+if ph_path and ph_path != permanent_thumb and os.path.exists(ph_path):
+    os.remove(ph_path)
+
+# 👇 ensure this elif is aligned with the previous if (not inside the try)
+elif msg_type == "Video":
+    try:
+        # Use permanent thumbnail if available, otherwise get from video
+        if permanent_thumb:
+            ph_path = permanent_thumb
+        else:
             try:
-                # Upload the file (await completes when upload is done)
-                await client.send_video(
-                    chat,
-                    file,
-                    duration=msg.video.duration,
-                    width=msg.video.width,
-                    height=msg.video.height,
-                    thumb=ph_path,
-                    caption=caption,
+                ph_path = await acc.download_media(msg.video.thumbs[0].file_id)
+            except:
+                ph_path = None
+
+        try:
+            # Upload the file (await completes when upload is done)
+            await client.send_video(
+                chat,
+                file,
+                duration=msg.video.duration,
+                width=msg.video.width,
+                height=msg.video.height,
+                thumb=ph_path,
+                caption=caption,
+                reply_to_message_id=message.id,
+                parse_mode=enums.ParseMode.HTML,
+                progress=progress,
+                progress_args=[message, "up"],
+            )
+            upload_success = True
+        except Exception as e:
+            if ERROR_MESSAGE:
+                await client.send_message(
+                    message.chat.id,
+                    f"Error: {e}",
                     reply_to_message_id=message.id,
-                    parse_mode=enums.ParseMode.HTML,
-                    progress=progress,
-                    progress_args=[message, "up"],
+                    parse_mode=enums.ParseMode.HTML
                 )
-                upload_success = True
-            except Exception as e:
-                if ERROR_MESSAGE:
-                    await client.send_message(
-                        message.chat.id, f"Error: {e}", reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML
-                    )
+    except Exception as e:
+        if ERROR_MESSAGE:
+            await client.send_message(
+                message.chat.id,
+                f"Video upload error: {e}",
+                reply_to_message_id=message.id,
+                parse_mode=enums.ParseMode.HTML
+                        )
                     
             # Only remove non-permanent thumbnails
             if ph_path and ph_path != permanent_thumb and os.path.exists(ph_path):
