@@ -25,10 +25,8 @@ from bot import TechVJUser
 # ========== CONFIGURATION SECTION ==========
 # Add words to remove from filename (case-insensitive)
 WORDS_TO_REMOVE = [
-    "@VJ_Botz",
-    "Sample",
-    "Demo",
-    "Watermark",
+    "@ADL_DRAMA",
+    "#ADL",
     # Add more words here
 ]
 
