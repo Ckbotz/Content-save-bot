@@ -4,6 +4,7 @@
 
 import os
 import asyncio
+import random
 import pyrogram
 from pyrogram import Client, filters, enums
 from pyrogram.errors import (
@@ -23,6 +24,22 @@ from bot import TechVJUser
 
 class batch_temp(object):
     IS_BATCH = {}
+    CUSTOM_SLEEP = {}  # Store custom sleep values per user
+
+
+# Anti-detection sleep function with randomization
+async def smart_sleep(user_id):
+    """Intelligent sleep with randomization to avoid detection"""
+    base_sleep = batch_temp.CUSTOM_SLEEP.get(user_id, [3, 5, 7, 10])
+    
+    # Pick a random sleep value from the list
+    sleep_time = random.choice(base_sleep)
+    
+    # Add random jitter (±20%) for more natural behavior
+    jitter = random.uniform(-0.2, 0.2) * sleep_time
+    final_sleep = sleep_time + jitter
+    
+    await asyncio.sleep(max(1, final_sleep))  # Minimum 1 second
 
 
 # download status
@@ -96,7 +113,56 @@ async def send_start(client: Client, message: Message):
 # help command
 @Client.on_message(filters.command(["help"]))
 async def send_help(client: Client, message: Message):
-    await client.send_message(chat_id=message.chat.id, text=f"{HELP_TXT}")
+    help_text = f"{HELP_TXT}\n\n**🕐 Custom Sleep Settings:**\n" \
+                f"Use `/setsleep` command to set custom delays between batch downloads.\n" \
+                f"Example: `/setsleep 3 5 7 10` (bot will randomly pick from these values)\n\n" \
+                f"Use `/getsleep` to see your current sleep settings."
+    await client.send_message(chat_id=message.chat.id, text=help_text)
+
+
+# Set custom sleep command
+@Client.on_message(filters.command(["setsleep"]))
+async def set_sleep(client: Client, message: Message):
+    try:
+        # Parse sleep values from command
+        parts = message.text.split()[1:]
+        if not parts:
+            await message.reply(
+                "**Usage:** `/setsleep 3 5 7 10`\n\n"
+                "Provide space-separated sleep values in seconds.\n"
+                "Bot will randomly pick one value for each download to avoid detection.\n\n"
+                "**Recommended values:** 3-15 seconds\n"
+                "**Example:** `/setsleep 3 5 7 10 12 15`"
+            )
+            return
+        
+        sleep_values = [int(x) for x in parts if x.isdigit() and 1 <= int(x) <= 60]
+        
+        if not sleep_values:
+            await message.reply("❌ Please provide valid sleep values between 1-60 seconds!")
+            return
+        
+        batch_temp.CUSTOM_SLEEP[message.from_user.id] = sleep_values
+        await message.reply(
+            f"✅ **Sleep values set successfully!**\n\n"
+            f"Values: `{', '.join(map(str, sleep_values))}` seconds\n"
+            f"Bot will randomly pick one value between downloads.\n\n"
+            f"💡 **Tip:** More varied values = better anti-detection!"
+        )
+    except ValueError:
+        await message.reply("❌ Please provide valid numeric values only!")
+
+
+# Get current sleep settings
+@Client.on_message(filters.command(["getsleep"]))
+async def get_sleep(client: Client, message: Message):
+    sleep_values = batch_temp.CUSTOM_SLEEP.get(message.from_user.id, [3, 5, 7, 10])
+    await message.reply(
+        f"**⏱️ Current Sleep Settings:**\n\n"
+        f"Values: `{', '.join(map(str, sleep_values))}` seconds\n"
+        f"Random selection with ±20% jitter for natural behavior.\n\n"
+        f"Use `/setsleep` to change these values."
+    )
 
 
 # cancel command
@@ -168,6 +234,10 @@ async def save(client: Client, message: Message):
             toID = fromID
 
         batch_temp.IS_BATCH[message.from_user.id] = False
+        
+        # Calculate total items for progress info
+        total_items = toID - fromID + 1
+        completed = 0
 
         for msgid in range(fromID, toID + 1):
             if batch_temp.IS_BATCH.get(message.from_user.id):
@@ -211,6 +281,7 @@ async def save(client: Client, message: Message):
                 chatid = int("-100" + datas[4])
                 try:
                     await handle_private(client, acc, message, chatid, msgid)
+                    completed += 1
                 except Exception as e:
                     if ERROR_MESSAGE:
                         await client.send_message(message.chat.id, f"Error: {e}", reply_to_message_id=message.id)
@@ -220,6 +291,7 @@ async def save(client: Client, message: Message):
                 username = datas[4]
                 try:
                     await handle_private(client, acc, message, username, msgid)
+                    completed += 1
                 except Exception as e:
                     if ERROR_MESSAGE:
                         await client.send_message(message.chat.id, f"Error: {e}", reply_to_message_id=message.id)
@@ -239,16 +311,39 @@ async def save(client: Client, message: Message):
 
                 try:
                     await client.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+                    completed += 1
                 except:
                     try:
                         await handle_private(client, acc, message, username, msgid)
+                        completed += 1
                     except Exception as e:
                         if ERROR_MESSAGE:
                             await client.send_message(message.chat.id, f"Error: {e}", reply_to_message_id=message.id)
 
-            await asyncio.sleep(3)
+            # Use smart sleep with anti-detection
+            if msgid < toID:  # Don't sleep after last item
+                await smart_sleep(message.from_user.id)
+                
+                # Optional: Show progress every 5 items
+                if completed % 5 == 0 and completed < total_items:
+                    try:
+                        await client.send_message(
+                            message.chat.id,
+                            f"📊 Progress: {completed}/{total_items} completed...",
+                            reply_to_message_id=message.id
+                        )
+                    except:
+                        pass
 
         batch_temp.IS_BATCH[message.from_user.id] = True
+        
+        # Send completion message
+        if completed > 0:
+            await client.send_message(
+                message.chat.id,
+                f"✅ **Batch Complete!**\n\nProcessed: {completed}/{total_items} items",
+                reply_to_message_id=message.id
+            )
 
 
 # handle private
