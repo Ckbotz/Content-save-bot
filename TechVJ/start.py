@@ -97,22 +97,47 @@ async def send_cancel(client: Client, message: Message):
 @Client.on_message(filters.text & filters.private)
 async def save(client: Client, message: Message):
     # joining chats
-	if ("https://t.me/+" in message.text or "https://t.me/joinchat/" in message.text) and LOGIN_SYSTEM == False:
+    if ("https://t.me/+" in message.text or "https://t.me/joinchat/" in message.text) and LOGIN_SYSTEM == False:
 
-		if TechVJUser is None:
-			await client.send_message(message.chat.id,f"**String Session is not Set**", reply_to_message_id=message.id)
-			return
+        if TechVJUser is None:
+            await client.send_message(
+                message.chat.id,
+                "**String Session is not Set**",
+                reply_to_message_id=message.id
+            )
+            return
+
         try:
             try:
                 await TechVJUser.join_chat(message.text)
-            except Exception as e: 
-                await client.send_message(message.chat.id,f"**Error** : __{e}__", reply_to_message_id=message.id)
+            except Exception as e:
+                await client.send_message(
+                    message.chat.id,
+                    f"**Error** : __{e}__",
+                    reply_to_message_id=message.id
+                )
                 return
-            await client.send_message(message.chat.id,"**Chat Joined**", reply_to_message_id=message.id)
+
+            await client.send_message(
+                message.chat.id,
+                "**Chat Joined**",
+                reply_to_message_id=message.id
+            )
+
         except UserAlreadyParticipant:
-            await client.send_message(message.chat.id,"**Chat alredy Joined**", reply_to_message_id=message.id)
+            await client.send_message(
+                message.chat.id,
+                "**Chat already Joined**",
+                reply_to_message_id=message.id
+            )
+
         except InviteHashExpired:
-            await client.send_message(message.chat.id,"**Invalid Link**", reply_to_message_id=message.id)
+            await client.send_message(
+                message.chat.id,
+                "**Invalid Link**",
+                reply_to_message_id=message.id
+            )
+
         return
     
     if "https://t.me/" in message.text:
