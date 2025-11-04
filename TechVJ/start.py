@@ -913,26 +913,21 @@ caption = None
 
 upload_success = False
 sent_message = None
-    
-    # Download permanent thumbnail if set
-perm_thumb = None
-if PERMANENT_THUMBNAIL_URL:
-    perm_thumb = await download_thumbnail(client, PERMANENT_THUMBNAIL_URL)
+  
+# Download permanent thumbnail if set
+    perm_thumb = None
+    if PERMANENT_THUMBNAIL_URL:
+        perm_thumb = await download_thumbnail(client, PERMANENT_THUMBNAIL_URL)
 
-    try:
-        if msg_type == "Document":
-            # CHECK CANCELLATION
-            if batch_temp.CANCEL_TASKS.get(user_id, False):
-                raise Exception("Cancelled by user")
-            
-            # Use permanent thumbnail or original
-            if perm_thumb:
-                ph_path = perm_thumb
-            else:
-                try:
-                    ph_path = await acc.download_media(msg.document.thumbs[0].file_id)
-                except:
-                    ph_path = None
+    if msg_type == "Document":
+        # Use permanent thumbnail or original
+        if perm_thumb:
+            ph_path = perm_thumb
+        else:
+            try:
+                ph_path = await acc.download_media(msg.document.thumbs[0].file_id)
+            except:
+                ph_path = None
             
             sent_message = await client.send_document(
                 chat,
