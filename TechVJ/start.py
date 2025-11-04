@@ -887,32 +887,32 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
     
     # Start upload status task
     up_task = asyncio.create_task(upstatus(client, f"{message.id}upstatus.txt", smsg, chat, user_id))
-    
-    # ========== CAPTION CUSTOMIZATION ==========
-    # Get original caption
-    original_caption = msg.caption if msg.caption else ""
-    
-    # Modify caption here - Choose one of the options below:
-    
-    # Option 1: Keep original caption
-    # caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
-    
-    # Option 2: Add custom text to original caption
-    # caption = f"{original_caption}\n\n📥 Downloaded by @YourBotUsername" if original_caption else "📥 Downloaded by @YourBotUsername"
-    
-    # Option 3: Replace with completely custom caption
-    # caption = "📁 Your Custom Caption Here"
-    
-    # Option 4: Add filename to caption
-    # filename = os.path.basename(file) if file else "Unknown"
-    # caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>" if original_caption else f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
-    
-    # Option 5: Remove caption completely
-      caption = None
-    # ===========================================
-    
-    upload_success = False
-    sent_message = None
+
+# ========== CAPTION CUSTOMIZATION ==========
+# Get original caption
+original_caption = msg.caption if msg.caption else ""
+
+# Modify caption here - Choose one of the options below:
+
+# Option 1: Keep original caption
+# caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
+
+# Option 2: Add custom text to original caption
+# caption = f"{original_caption}\n\n📥 Downloaded by @YourBotUsername" if original_caption else "📥 Downloaded by @YourBotUsername"
+
+# Option 3: Replace with completely custom caption
+# caption = "📁 Your Custom Caption Here"
+
+# Option 4: Add filename to caption
+# filename = os.path.basename(file) if file else "Unknown"
+# caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>" if original_caption else f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
+
+# Option 5: Remove caption completely
+caption = None
+# ===========================================
+
+upload_success = False
+sent_message = None
     
     # Download permanent thumbnail if set
     perm_thumb = None
