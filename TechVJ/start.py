@@ -908,7 +908,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
     # caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>" if original_caption else f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
     
     # Option 5: Remove caption completely
-     caption = None
+      caption = None
     # ===========================================
     
     upload_success = False
