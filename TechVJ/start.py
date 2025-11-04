@@ -196,6 +196,26 @@ async def forward_to_log(client, message, user_id):
         print(f"Error forwarding to log channel: {e}")
 
 
+def format_time(seconds):
+    """Format seconds to human readable time"""
+    if seconds == 0:
+        return "0s"
+    
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+    
+    time_str = ""
+    if hours > 0:
+        time_str += f"{hours}h "
+    if minutes > 0:
+        time_str += f"{minutes}m "
+    if secs > 0 or time_str == "":
+        time_str += f"{secs}s"
+    
+    return time_str.strip()
+
+
 # Auto monitor channels for new documents
 async def auto_monitor_channels(client: Client, user_id: int):
     """Monitor channels for new document messages and auto-download/upload"""
@@ -254,85 +274,122 @@ async def auto_monitor_channels(client: Client, user_id: int):
     
     while batch_temp.MONITOR_ACTIVE.get(user_id, False):
         try:
-            # Check each channel for new documents
-            for channel_id in MONITOR_CHANNELS:
+            # Process each channel IN ORDER from MONITOR_CHANNELS list
+            for channel_index, channel_id in enumerate(MONITOR_CHANNELS, 1):
                 if not batch_temp.MONITOR_ACTIVE.get(user_id, False):
                     break
                 
                 last_msg_id = batch_temp.LAST_MESSAGE_IDS[user_id].get(channel_id, 0)
                 
                 try:
-                    # Get messages after last processed ID
+                    # Collect new messages (will be in reverse order - newest first)
+                    new_messages = []
                     async for msg in acc.get_chat_history(channel_id, offset_id=last_msg_id, limit=50):
                         if not batch_temp.MONITOR_ACTIVE.get(user_id, False):
                             break
                         
-                        # Only process documents
+                        # Only collect documents
                         if msg.document:
-                            # Update last message ID
-                            batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = max(
-                                batch_temp.LAST_MESSAGE_IDS[user_id][channel_id],
-                                msg.id
-                            )
-                            
-                            # Process the document
+                            new_messages.append(msg)
+                    
+                    # Reverse to process from FIRST new message to LAST new message
+                    new_messages.reverse()
+                    
+                    if new_messages:
+                        await client.send_message(
+                            user_id,
+                            f"📥 **Channel {channel_index}/{len(MONITOR_CHANNELS)}: Found {len(new_messages)} new document(s)**\n"
+                            f"Channel ID: `{channel_id}`\n"
+                            f"Processing from first to last..."
+                        )
+                    
+                    # Process messages from FIRST to LAST
+                    for doc_index, msg in enumerate(new_messages, 1):
+                        if not batch_temp.MONITOR_ACTIVE.get(user_id, False):
+                            break
+                        
+                        # Update last message ID
+                        batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = max(
+                            batch_temp.LAST_MESSAGE_IDS[user_id][channel_id],
+                            msg.id
+                        )
+                        
+                        # Process the document
+                        await client.send_message(
+                            user_id,
+                            f"📥 **Processing Document {doc_index}/{len(new_messages)}**\n"
+                            f"Channel: {channel_index}/{len(MONITOR_CHANNELS)}\n"
+                            f"Downloading..."
+                        )
+                        
+                        # Create a dummy message object for handle_private
+                        class DummyMessage:
+                            def __init__(self, chat_id):
+                                self.chat = type('obj', (object,), {'id': chat_id})
+                                self.id = 0
+                                self.from_user = type('obj', (object,), {'id': chat_id})
+                        
+                        dummy_msg = DummyMessage(user_id)
+                        
+                        # Download and upload
+                        success = await handle_private(client, acc, dummy_msg, channel_id, msg.id, is_auto=True)
+                        
+                        if success:
                             await client.send_message(
                                 user_id,
-                                f"📥 **New Document Found!**\n"
-                                f"Channel: `{channel_id}`\n"
-                                f"Processing..."
+                                f"✅ **Document {doc_index}/{len(new_messages)} uploaded!**"
                             )
-                            
-                            # Create a dummy message object for handle_private
-                            class DummyMessage:
-                                def __init__(self, chat_id):
-                                    self.chat = type('obj', (object,), {'id': chat_id})
-                                    self.id = 0
-                            
-                            dummy_msg = DummyMessage(user_id)
-                            
-                            # Download and upload
-                            success = await handle_private(client, acc, dummy_msg, channel_id, msg.id, is_auto=True)
-                            
-                            if success:
-                                await client.send_message(
-                                    user_id,
-                                    f"✅ **Document uploaded successfully!**"
-                                )
-                            
-                            # Apply smart sleep between documents
+                        else:
+                            await client.send_message(
+                                user_id,
+                                f"❌ **Document {doc_index}/{len(new_messages)} failed!**"
+                            )
+                        
+                        # Apply smart sleep between documents (setsleep values)
+                        if doc_index < len(new_messages):
                             await smart_sleep(user_id)
                 
                 except Exception as e:
                     print(f"Error checking channel {channel_id}: {e}")
+                    await client.send_message(
+                        user_id,
+                        f"⚠️ **Error checking channel {channel_index}:** `{str(e)}`"
+                    )
                     continue
+                
+                # After finishing one channel, if it's not the last channel, apply check interval sleep
+                if channel_index < len(MONITOR_CHANNELS) and batch_temp.MONITOR_ACTIVE.get(user_id, False):
+                    check_values = batch_temp.CHECK_INTERVAL_VALUES.get(user_id, [MIN_CHECK_INTERVAL, MAX_CHECK_INTERVAL])
+                    sleep_time = random.choice(check_values)
+                    
+                    await client.send_message(
+                        user_id,
+                        f"⏳ **Moving to next channel in {format_time(sleep_time)}**\n"
+                        f"Completed: {channel_index}/{len(MONITOR_CHANNELS)} channels"
+                    )
+                    
+                    # Sleep in chunks to allow quick cancellation
+                    for _ in range(sleep_time):
+                        if not batch_temp.MONITOR_ACTIVE.get(user_id, False):
+                            break
+                        await asyncio.sleep(1)
             
-            # Random sleep before next check - pick random value from user's list
-            check_values = batch_temp.CHECK_INTERVAL_VALUES.get(user_id, [MIN_CHECK_INTERVAL, MAX_CHECK_INTERVAL])
-            sleep_time = random.choice(check_values)
-            
-            hours = sleep_time // 3600
-            minutes = (sleep_time % 3600) // 60
-            seconds = sleep_time % 60
-            
-            time_str = ""
-            if hours > 0:
-                time_str += f"{hours}h "
-            if minutes > 0:
-                time_str += f"{minutes}m "
-            if seconds > 0 or time_str == "":
-                time_str += f"{seconds}s"
-            
-            await client.send_message(
-                user_id,
-                f"⏳ **Next check in {time_str.strip()}**"
-            )
-            
-            # Sleep in chunks to allow quick cancellation
-            for _ in range(sleep_time):
-                if not batch_temp.MONITOR_ACTIVE.get(user_id, False):
-                    break
-                await asyncio.sleep(1)
+            # After processing all channels, apply random sleep before next cycle
+            if batch_temp.MONITOR_ACTIVE.get(user_id, False):
+                check_values = batch_temp.CHECK_INTERVAL_VALUES.get(user_id, [MIN_CHECK_INTERVAL, MAX_CHECK_INTERVAL])
+                sleep_time = random.choice(check_values)
+                
+                await client.send_message(
+                    user_id,
+                    f"✅ **All {len(MONITOR_CHANNELS)} channels processed!**\n\n"
+                    f"⏳ **Next cycle in {format_time(sleep_time)}**"
+                )
+                
+                # Sleep in chunks to allow quick cancellation
+                for _ in range(sleep_time):
+                    if not batch_temp.MONITOR_ACTIVE.get(user_id, False):
+                        break
+                    await asyncio.sleep(1)
                 
         except Exception as e:
             print(f"Error in monitor loop: {e}")
@@ -368,7 +425,7 @@ async def stop_monitor(client: Client, message: Message):
         return
     
     batch_temp.MONITOR_ACTIVE[user_id] = False
-    await message.reply("🛑 **Stopping auto monitor...**")
+    await message.reply("🛑 **Stopping auto monitor...**\n⏰ Check interval will be disabled automatically.")
 
 
 # Set check interval command - FIXED VERSION
@@ -382,7 +439,8 @@ async def set_check_interval(client: Client, message: Message):
                 "**Example:** `/setcheckinterval 0 350 458 890 1053`\n"
                 "Bot will randomly pick one value from your list for each check.\n\n"
                 "**Allowed range:** 0-86400 seconds (0s to 24h)\n"
-                "**Tip:** More values = better randomization!"
+                "**Tip:** More values = better randomization!\n\n"
+                "⚠️ **Note:** Check interval only works when monitor is active!"
             )
             return
         
@@ -408,28 +466,17 @@ async def set_check_interval(client: Client, message: Message):
         batch_temp.CHECK_INTERVAL_VALUES[message.from_user.id] = interval_values
         
         # Format display
-        formatted_values = []
-        for val in interval_values:
-            if val == 0:
-                formatted_values.append("0s")
-            else:
-                hours = val // 3600
-                minutes = (val % 3600) // 60
-                seconds = val % 60
-                time_str = ""
-                if hours > 0:
-                    time_str += f"{hours}h "
-                if minutes > 0:
-                    time_str += f"{minutes}m "
-                if seconds > 0 or time_str == "":
-                    time_str += f"{seconds}s"
-                formatted_values.append(time_str.strip())
+        formatted_values = [format_time(val) for val in interval_values]
+        
+        monitor_status = "🟢 Active" if batch_temp.MONITOR_ACTIVE.get(message.from_user.id, False) else "🔴 Inactive"
         
         await message.reply(
             f"✅ **Check interval set successfully!**\n\n"
             f"📊 Values: `{', '.join(formatted_values)}`\n"
-            f"🎲 Bot will randomly pick one value for each check.\n\n"
-            f"💡 **Tip:** More varied values = better anti-detection!"
+            f"🎲 Bot will randomly pick one value for each check.\n"
+            f"📡 Monitor Status: {monitor_status}\n\n"
+            f"💡 **Tip:** More varied values = better anti-detection!\n"
+            f"⚠️ **Note:** These intervals only work when /startmonitor is active."
         )
     except Exception as e:
         await message.reply(f"❌ Error: {e}")
@@ -444,28 +491,17 @@ async def get_check_interval(client: Client, message: Message):
     )
     
     # Format display
-    formatted_values = []
-    for val in intervals:
-        if val == 0:
-            formatted_values.append("0s")
-        else:
-            hours = val // 3600
-            minutes = (val % 3600) // 60
-            seconds = val % 60
-            time_str = ""
-            if hours > 0:
-                time_str += f"{hours}h "
-            if minutes > 0:
-                time_str += f"{minutes}m "
-            if seconds > 0 or time_str == "":
-                time_str += f"{seconds}s"
-            formatted_values.append(time_str.strip())
+    formatted_values = [format_time(val) for val in intervals]
+    
+    monitor_status = "🟢 Active (intervals in use)" if batch_temp.MONITOR_ACTIVE.get(message.from_user.id, False) else "🔴 Inactive (intervals disabled)"
     
     await message.reply(
         f"**⏰ Current Check Interval Values:**\n\n"
         f"Values: `{', '.join(formatted_values)}`\n"
-        f"Random selection from these {len(intervals)} values.\n\n"
-        f"Use `/setcheckinterval` to change."
+        f"Random selection from these {len(intervals)} values.\n"
+        f"📡 Monitor Status: {monitor_status}\n\n"
+        f"Use `/setcheckinterval` to change.\n"
+        f"⚠️ **Note:** Intervals only work when monitor is active!"
     )
 
 
@@ -507,10 +543,15 @@ async def send_help(client: Client, message: Message):
                 f"**⏰ Auto Monitor Settings:**\n" \
                 f"Use `/setcheckinterval` to set check interval values (in seconds)\n" \
                 f"Example: `/setcheckinterval 0 350 458 890 1053` (bot picks randomly)\n" \
-                f"Use `/getcheckinterval` to see current settings\n\n" \
+                f"Use `/getcheckinterval` to see current settings\n" \
+                f"⚠️ Check intervals only work when monitor is active!\n\n" \
                 f"**🤖 Auto Monitor Commands:**\n" \
                 f"`/startmonitor` - Start automatic channel monitoring\n" \
                 f"`/stopmonitor` - Stop automatic channel monitoring\n\n" \
+                f"**📊 Monitor Flow:**\n" \
+                f"Channel 1 → Process all new docs (setsleep between each)\n" \
+                f"→ Random sleep (checkinterval) → Channel 2 → ...\n" \
+                f"→ After all channels → Random sleep → Repeat cycle\n\n" \
                 f"**🛑 Cancel Command:**\n" \
                 f"Use `/cancel` to immediately stop any ongoing batch process including current download/upload."
     await client.send_message(chat_id=message.chat.id, text=help_text)
