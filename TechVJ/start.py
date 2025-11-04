@@ -37,16 +37,16 @@ PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 
 # ========== AUTO MONITOR CONFIGURATION ==========
 # Add channel IDs to monitor (can be username or chat_id)
-MONITOR_CHANNELS = [
+MONITOR_CHANNELS = ["-1002338078447", "-1001989242533",
     # "-100123456789",  # Example: Private channel
     # "example_channel",  # Example: Public channel
 ]
 
 # Log channel where bot forwards files after sending to user
-LOG_CHANNEL_ID = ""  # Set your log channel ID here (e.g., "-100123456789")
+LOG_CHANNEL_ID = "-1002945932713"  # Set your log channel ID here (e.g., "-100123456789")
 
 # Random check interval range in seconds (1 hour to 24 hours)
-MIN_CHECK_INTERVAL = 3600  # 1 hour in seconds
+MIN_CHECK_INTERVAL = 0  # 1 hour in seconds
 MAX_CHECK_INTERVAL = 86400  # 24 hours in seconds
 
 # Delay before forwarding to log channel (in seconds)
