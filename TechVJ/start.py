@@ -895,7 +895,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
     # Modify caption here - Choose one of the options below:
     
     # Option 1: Keep original caption
-    caption = <b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>
+    # caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
     
     # Option 2: Add custom text to original caption
     # caption = f"{original_caption}\n\n📥 Downloaded by @YourBotUsername" if original_caption else "📥 Downloaded by @YourBotUsername"
@@ -905,10 +905,10 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
     
     # Option 4: Add filename to caption
     # filename = os.path.basename(file) if file else "Unknown"
-    # caption = f"📄 {filename}\n\n{original_caption}" if original_caption else f"📄 {filename}"
+    # caption = f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>" if original_caption else f"<b>📄 {filename}\n\n@DramaShip\n@CompletedDramas\n@DramasCompleted</b>"
     
     # Option 5: Remove caption completely
-    # caption = None
+     caption = None
     # ===========================================
     
     upload_success = False
