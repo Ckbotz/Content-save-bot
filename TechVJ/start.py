@@ -29,6 +29,7 @@ WORDS_TO_REMOVE = [
     "#ADL",
     "@DA_Rips",
     "[MABLG]",
+    "@Adrama_lovers",
     # Add more words here
 ]
 
