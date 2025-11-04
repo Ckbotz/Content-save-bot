@@ -915,9 +915,9 @@ upload_success = False
 sent_message = None
     
     # Download permanent thumbnail if set
-    perm_thumb = None
-    if PERMANENT_THUMBNAIL_URL:
-        perm_thumb = await download_thumbnail(client, PERMANENT_THUMBNAIL_URL)
+perm_thumb = None
+if PERMANENT_THUMBNAIL_URL:
+    perm_thumb = await download_thumbnail(client, PERMANENT_THUMBNAIL_URL)
 
     try:
         if msg_type == "Document":
