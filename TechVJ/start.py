@@ -39,12 +39,12 @@ PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 # ========== AUTO CHANNEL MONITOR CONFIG ==========
 # Add channel IDs to monitor (negative IDs for channels/groups)
 MONITOR_CHANNELS = [
-    -1001234567890,  # Replace with actual channel ID
-    -1009876543210,  # Add more channel IDs here
+    -1002338078447,  # Replace with actual channel ID
+    -1001989242533,  # Add more channel IDs here
 ]
 
 # Enable/Disable auto monitoring (set to True to enable)
-AUTO_MONITOR_ENABLED = False
+AUTO_MONITOR_ENABLED = True
 # =========================================
 
 
