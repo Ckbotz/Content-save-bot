@@ -27,6 +27,9 @@ from bot import TechVJUser
 WORDS_TO_REMOVE = [
     "@ADL_DRAMA",
     "#ADL",
+    "[MABLG]",
+    "@DA_RIPS",
+    "@Da_Rips",
     # Add more words here
 ]
 
