@@ -244,11 +244,13 @@ async def send_help(client: Client, message: Message):
                 f"Use `/getmaxsize` to see current size limit.\n\n" \
                 f"**🤖 Auto Channel Monitor:**\n" \
                 f"Use `/startmonitor` to start automatic channel monitoring.\n" \
+                f"⚠️ **IMPORTANT:** Only NEW messages after starting will be downloaded!\n" \
                 f"Use `/stopmonitor` to stop automatic monitoring.\n" \
                 f"Use `/setintervalsleep` to set check intervals (in seconds).\n" \
                 f"Example: `/setintervalsleep 300 490 520 918 684`\n" \
                 f"Use `/getintervalsleep` to see current interval settings.\n" \
-                f"Use `/monitorstatus` to see monitoring status.\n\n" \
+                f"Use `/monitorstatus` to see monitoring status.\n" \
+                f"Use `/resetmonitor` to reset tracking positions (only when stopped).\n\n" \
                 f"**🛑 Cancel Command:**\n" \
                 f"Use `/cancel` to immediately stop any ongoing batch process including current download/upload."
     await client.send_message(chat_id=message.chat.id, text=help_text)
@@ -478,16 +480,44 @@ async def auto_channel_monitor(client: Client, user_id: int):
     if user_id not in batch_temp.LAST_MESSAGE_IDS:
         batch_temp.LAST_MESSAGE_IDS[user_id] = {}
     
+    # CRITICAL: Set current latest message IDs as starting point
+    # This ensures we ONLY download messages that come AFTER monitoring starts
+    await client.send_message(
+        user_id,
+        "🔍 **Initializing monitor - fetching current message positions...**"
+    )
+    
+    for channel_id in MONITOR_CHANNELS:
+        try:
+            # Get the very latest message ID from each channel
+            async for msg in acc.get_chat_history(channel_id, limit=1):
+                batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = msg.id
+                await client.send_message(
+                    user_id,
+                    f"📌 Channel `{channel_id}`: Starting from message #{msg.id}\n"
+                    f"Only NEW messages after this will be downloaded."
+                )
+                break
+        except Exception as e:
+            await client.send_message(
+                user_id,
+                f"⚠️ Could not access channel `{channel_id}`: {e}"
+            )
+            # Set to 0 if can't access (will download all accessible messages)
+            batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = 0
+    
     max_size_mb = batch_temp.MAX_FILE_SIZE.get(user_id, 2000)
     size_info = f"up to {max_size_mb} MB" if max_size_mb > 0 else "All sizes"
     
     await client.send_message(
         user_id,
-        f"🤖 **Auto Channel Monitor Started!**\n\n"
+        f"✅ **Auto Channel Monitor Started Successfully!**\n\n"
         f"📡 Monitoring {len(MONITOR_CHANNELS)} channel(s)\n"
         f"📄 Tracking: Documents only\n"
         f"📏 Size limit: {size_info}\n"
         f"⏱️ Check interval: Random from your settings\n\n"
+        f"🔔 **IMPORTANT:** Only NEW messages from NOW onwards will be downloaded!\n"
+        f"Previous messages are ignored.\n\n"
         f"Use /stopmonitor to stop."
     )
     
@@ -499,7 +529,7 @@ async def auto_channel_monitor(client: Client, user_id: int):
         try:
             await client.send_message(
                 user_id,
-                f"🔄 **Cycle #{cycle_count} - Starting channel check...**"
+                f"🔄 **Cycle #{cycle_count} - Checking for NEW messages...**"
             )
             
             # Process each channel
@@ -511,12 +541,20 @@ async def auto_channel_monitor(client: Client, user_id: int):
                     # Get last processed message ID for this channel
                     last_msg_id = batch_temp.LAST_MESSAGE_IDS[user_id].get(channel_id, 0)
                     
-                    # Fetch new messages from the channel
+                    # Fetch ONLY new messages (messages with ID > last_msg_id)
                     messages = []
                     skipped_count = 0
+                    new_latest_id = last_msg_id  # Track the newest message ID
+                    
                     async for msg in acc.get_chat_history(channel_id, limit=100):
+                        # CRITICAL: Stop if we reach messages we've already seen
                         if msg.id <= last_msg_id:
                             break
+                        
+                        # Update newest ID
+                        if msg.id > new_latest_id:
+                            new_latest_id = msg.id
+                        
                         # Only process documents
                         if msg.document:
                             # Check file size
@@ -533,6 +571,9 @@ async def auto_channel_monitor(client: Client, user_id: int):
                             user_id,
                             f"📭 Channel `{channel_id}`: No new documents found."
                         )
+                        # Update to latest even if no documents found
+                        if new_latest_id > last_msg_id:
+                            batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = new_latest_id
                         continue
                     
                     status_msg = f"📬 Channel `{channel_id}`: Found {len(messages)} new document(s)"
@@ -572,9 +613,14 @@ async def auto_channel_monitor(client: Client, user_id: int):
                                     f"❌ Error processing document: {e}"
                                 )
                     
-                    # Update last message ID even if some failed
-                    if messages:
-                        batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = messages[-1].id
+                    # CRITICAL: Update to the newest message ID we saw
+                    # This prevents re-downloading in case of partial failure
+                    if new_latest_id > last_msg_id:
+                        batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = new_latest_id
+                        await client.send_message(
+                            user_id,
+                            f"✅ Channel `{channel_id}`: Updated position to message #{new_latest_id}"
+                        )
                     
                 except Exception as e:
                     if ERROR_MESSAGE:
@@ -820,6 +866,31 @@ async def monitor_status(client: Client, message: Message):
             status_text += f"Channel `{ch_id}`: Message #{msg_id}\n"
     
     await message.reply(status_text)
+
+
+# Reset monitor positions command
+@Client.on_message(filters.command(["resetmonitor"]))
+async def reset_monitor(client: Client, message: Message):
+    user_id = message.from_user.id
+    
+    # Check if monitoring is running
+    if user_id in batch_temp.AUTO_MONITOR_TASKS:
+        await message.reply(
+            "⚠️ **Cannot reset while monitoring is active!**\n\n"
+            "Please use /stopmonitor first, then try /resetmonitor"
+        )
+        return
+    
+    # Clear last message IDs
+    if user_id in batch_temp.LAST_MESSAGE_IDS:
+        del batch_temp.LAST_MESSAGE_IDS[user_id]
+    
+    await message.reply(
+        "✅ **Monitor positions reset!**\n\n"
+        "Next time you start monitoring, it will set new starting positions.\n"
+        "Only messages AFTER monitoring starts will be downloaded.\n\n"
+        "Use /startmonitor to begin monitoring."
+    )
 
 
 # cancel command - IMMEDIATE STOP
