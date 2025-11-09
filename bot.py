@@ -6,6 +6,10 @@ from pyrogram import Client, idle
 from config import API_ID, API_HASH, BOT_TOKEN, STRING_SESSION, LOGIN_SYSTEM
 import asyncio
 from aiohttp import web
+from pyrogram import utils as pyroutils
+
+pyroutils.MIN_CHAT_ID = -999999999999
+pyroutils.MIN_CHANNEL_ID = -100999999999999
 
 # Create clients but don't start them yet
 if STRING_SESSION is not None and LOGIN_SYSTEM == False:
