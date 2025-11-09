@@ -182,10 +182,10 @@ async def forward_to_log_channel(client: Client, user_id: int, message_ids: list
         if copied_count > 0:
             await client.send_message(
                 LOG_CHANNEL_ID,
-                f"📊 **Batch Uploads**\n\n"
+                f"📊 **Auto Uploads**\n\n"
                 f"✨️ **By: @DramaShip**\n"
                 f"📁 **Upload: successful✅️**\n"
-                f"⏱️ Cooldown: {LOG_COOLDOWN_SECONDS}s\n"
+                f"⏱️ **Cooldown: {LOG_COOLDOWN_SECONDS}s**\n"
                 f"📤 **Uploader: @ZenorTG**"
             )
         
