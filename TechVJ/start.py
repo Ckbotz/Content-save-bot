@@ -36,6 +36,10 @@ WORDS_TO_REMOVE = [
 # Permanent thumbnail URL (leave empty string "" to disable)
 PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 
+# LOG CHANNEL CONFIGURATION
+LOG_CHANNEL_ID = -1001234567890  # Replace with your log channel ID (must be negative for channels/groups)
+LOG_COOLDOWN_SECONDS = 150  # 150 seconds cooldown before forwarding to log channel
+
 # ========== AUTO CHANNEL MONITOR CONFIG ==========
 # Add channel IDs to monitor (negative IDs for channels/groups)
 MONITOR_CHANNELS = [
@@ -56,6 +60,7 @@ class batch_temp(object):
     LAST_MESSAGE_IDS = {}  # Store last processed message ID per channel
     AUTO_MONITOR_TASKS = {}  # Store auto monitor tasks per user
     MAX_FILE_SIZE = {}  # Store maximum file size per user (in MB)
+    PENDING_LOG_MESSAGES = {}  # Store messages pending log forwarding {user_id: [message_ids]}
 
 
 def clean_filename(filename):
@@ -113,6 +118,52 @@ async def download_thumbnail(client, url):
         print(f"Error downloading thumbnail: {e}")
     
     return None
+
+
+# Forward messages to log channel after cooldown
+async def forward_to_log_channel(client: Client, user_id: int, message_ids: list):
+    """Forward messages to log channel after cooldown period"""
+    try:
+        # Wait for cooldown period
+        await asyncio.sleep(LOG_COOLDOWN_SECONDS)
+        
+        # Check if process was cancelled during cooldown
+        if batch_temp.CANCEL_TASKS.get(user_id, False):
+            return
+        
+        # Get user info for logging
+        try:
+            user = await client.get_users(user_id)
+            user_mention = user.mention
+        except:
+            user_mention = f"User {user_id}"
+        
+        # Forward each message to log channel
+        forwarded_count = 0
+        for msg_id in message_ids:
+            try:
+                await client.forward_messages(
+                    chat_id=LOG_CHANNEL_ID,
+                    from_chat_id=user_id,
+                    message_ids=msg_id
+                )
+                forwarded_count += 1
+                await asyncio.sleep(1)  # Small delay between forwards
+            except Exception as e:
+                print(f"Error forwarding message {msg_id}: {e}")
+        
+        # Send summary to log channel
+        if forwarded_count > 0:
+            await client.send_message(
+                LOG_CHANNEL_ID,
+                f"📊 **Batch Log Summary**\n\n"
+                f"👤 User: {user_mention}\n"
+                f"📁 Files Forwarded: {forwarded_count}\n"
+                f"⏱️ Cooldown: {LOG_COOLDOWN_SECONDS}s"
+            )
+        
+    except Exception as e:
+        print(f"Error in forward_to_log_channel: {e}")
 
 
 # Anti-detection sleep function with randomization
@@ -251,6 +302,8 @@ async def send_help(client: Client, message: Message):
                 f"Use `/getintervalsleep` to see current interval settings.\n" \
                 f"Use `/monitorstatus` to see monitoring status.\n" \
                 f"Use `/resetmonitor` to reset tracking positions (only when stopped).\n\n" \
+                f"**📋 Log Channel:**\n" \
+                f"Files are automatically forwarded to log channel after {LOG_COOLDOWN_SECONDS}s cooldown.\n\n" \
                 f"**🛑 Cancel Command:**\n" \
                 f"Use `/cancel` to immediately stop any ongoing batch process including current download/upload."
     await client.send_message(chat_id=message.chat.id, text=help_text)
@@ -480,8 +533,11 @@ async def auto_channel_monitor(client: Client, user_id: int):
     if user_id not in batch_temp.LAST_MESSAGE_IDS:
         batch_temp.LAST_MESSAGE_IDS[user_id] = {}
     
+    # Initialize pending log messages list
+    if user_id not in batch_temp.PENDING_LOG_MESSAGES:
+        batch_temp.PENDING_LOG_MESSAGES[user_id] = []
+    
     # CRITICAL: Set current latest message IDs as starting point
-    # This ensures we ONLY download messages that come AFTER monitoring starts
     await client.send_message(
         user_id,
         "🔍 **Initializing monitor - fetching current message positions...**"
@@ -503,7 +559,7 @@ async def auto_channel_monitor(client: Client, user_id: int):
                 user_id,
                 f"⚠️ Could not access channel `{channel_id}`: {e}"
             )
-            # Set to 0 if can't access (will download all accessible messages)
+            # Set to 0 if can't access
             batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = 0
     
     max_size_mb = batch_temp.MAX_FILE_SIZE.get(user_id, 2000)
@@ -515,7 +571,8 @@ async def auto_channel_monitor(client: Client, user_id: int):
         f"📡 Monitoring {len(MONITOR_CHANNELS)} channel(s)\n"
         f"📄 Tracking: Documents only\n"
         f"📏 Size limit: {size_info}\n"
-        f"⏱️ Check interval: Random from your settings\n\n"
+        f"⏱️ Check interval: Random from your settings\n"
+        f"📋 Log cooldown: {LOG_COOLDOWN_SECONDS}s\n\n"
         f"🔔 **IMPORTANT:** Only NEW messages from NOW onwards will be downloaded!\n"
         f"Previous messages are ignored.\n\n"
         f"Use /stopmonitor to stop."
@@ -541,13 +598,13 @@ async def auto_channel_monitor(client: Client, user_id: int):
                     # Get last processed message ID for this channel
                     last_msg_id = batch_temp.LAST_MESSAGE_IDS[user_id].get(channel_id, 0)
                     
-                    # Fetch ONLY new messages (messages with ID > last_msg_id)
+                    # Fetch ONLY new messages
                     messages = []
                     skipped_count = 0
-                    new_latest_id = last_msg_id  # Track the newest message ID
+                    new_latest_id = last_msg_id
                     
                     async for msg in acc.get_chat_history(channel_id, limit=100):
-                        # CRITICAL: Stop if we reach messages we've already seen
+                        # Stop if we reach messages we've already seen
                         if msg.id <= last_msg_id:
                             break
                         
@@ -595,10 +652,13 @@ async def auto_channel_monitor(client: Client, user_id: int):
                                 f"📦 Size: {file_size_str}"
                             )
                             
-                            # Download and upload document
-                            success = await process_document(client, acc, user_id, msg)
+                            # Download and upload document - returns sent message
+                            sent_msg = await process_document(client, acc, user_id, msg)
                             
-                            if success:
+                            if sent_msg:
+                                # Add to pending log messages
+                                batch_temp.PENDING_LOG_MESSAGES[user_id].append(sent_msg.id)
+                                
                                 # Update last message ID
                                 batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = msg.id
                                 
@@ -613,8 +673,7 @@ async def auto_channel_monitor(client: Client, user_id: int):
                                     f"❌ Error processing document: {e}"
                                 )
                     
-                    # CRITICAL: Update to the newest message ID we saw
-                    # This prevents re-downloading in case of partial failure
+                    # Update to the newest message ID we saw
                     if new_latest_id > last_msg_id:
                         batch_temp.LAST_MESSAGE_IDS[user_id][channel_id] = new_latest_id
                         await client.send_message(
@@ -632,6 +691,19 @@ async def auto_channel_monitor(client: Client, user_id: int):
             # Check if cancelled
             if batch_temp.CANCEL_TASKS.get(user_id, False):
                 break
+            
+            # Forward pending messages to log channel if any
+            if batch_temp.PENDING_LOG_MESSAGES[user_id]:
+                msg_count = len(batch_temp.PENDING_LOG_MESSAGES[user_id])
+                await client.send_message(
+                    user_id,
+                    f"📋 Forwarding {msg_count} message(s) to log channel in {LOG_COOLDOWN_SECONDS}s..."
+                )
+                
+                # Start log forwarding task
+                log_msgs = batch_temp.PENDING_LOG_MESSAGES[user_id].copy()
+                batch_temp.PENDING_LOG_MESSAGES[user_id] = []  # Clear the list
+                asyncio.create_task(forward_to_log_channel(client, user_id, log_msgs))
             
             # Sleep before next cycle
             await client.send_message(
@@ -659,13 +731,13 @@ async def auto_channel_monitor(client: Client, user_id: int):
         del batch_temp.AUTO_MONITOR_TASKS[user_id]
 
 
-# Process single document
+# Process single document - returns sent message object
 async def process_document(client: Client, acc, user_id: int, msg):
     """Download and upload a single document"""
     
     # Check cancellation
     if batch_temp.CANCEL_TASKS.get(user_id, False):
-        return False
+        return None
     
     # Create a dummy message object for compatibility
     class DummyMessage:
@@ -690,7 +762,7 @@ async def process_document(client: Client, acc, user_id: int, msg):
             if os.path.exists(f"{dummy_msg.id}downstatus.txt"):
                 os.remove(f"{dummy_msg.id}downstatus.txt")
             await smsg.delete()
-            return False
+            return None
         
         # Download file
         file = await acc.download_media(msg, progress=progress, progress_args=[dummy_msg, "down"])
@@ -703,7 +775,7 @@ async def process_document(client: Client, acc, user_id: int, msg):
             if file and os.path.exists(file):
                 os.remove(file)
             await smsg.delete()
-            return False
+            return None
         
         # Clean filename
         if file and os.path.exists(file):
@@ -731,14 +803,14 @@ async def process_document(client: Client, acc, user_id: int, msg):
         if ERROR_MESSAGE:
             await client.send_message(user_id, f"❌ Download error: {e}")
         await smsg.delete()
-        return False
+        return None
     
     # Check cancellation before upload
     if batch_temp.CANCEL_TASKS.get(user_id, False):
         if file and os.path.exists(file):
             os.remove(file)
         await smsg.delete()
-        return False
+        return None
     
     # Update to uploading
     try:
@@ -752,7 +824,7 @@ async def process_document(client: Client, acc, user_id: int, msg):
     )
     
     caption = msg.caption if msg.caption else None
-    upload_success = False
+    sent_message = None
     
     # Download thumbnail
     perm_thumb = None
@@ -773,7 +845,7 @@ async def process_document(client: Client, acc, user_id: int, msg):
                 ph_path = None
         
         # Upload document
-        await client.send_document(
+        sent_message = await client.send_document(
             user_id,
             file,
             thumb=ph_path,
@@ -782,7 +854,6 @@ async def process_document(client: Client, acc, user_id: int, msg):
             progress=progress,
             progress_args=[dummy_msg, "up"],
         )
-        upload_success = True
         
         if ph_path and os.path.exists(ph_path):
             os.remove(ph_path)
@@ -805,7 +876,7 @@ async def process_document(client: Client, acc, user_id: int, msg):
     except:
         pass
     
-    return upload_success
+    return sent_message
 
 
 # Start auto monitoring command
@@ -859,6 +930,7 @@ async def monitor_status(client: Client, message: Message):
     status_text += f"📏 Max Size: {'No limit' if max_size_mb == 0 else f'{max_size_mb} MB'}\n"
     status_text += f"⏱️ Check Intervals: `{', '.join(map(str, interval_values))}` sec\n"
     status_text += f"💤 Download Sleep: `{', '.join(map(str, sleep_values))}` sec\n"
+    status_text += f"📋 Log Cooldown: {LOG_COOLDOWN_SECONDS}s\n"
     
     if user_id in batch_temp.LAST_MESSAGE_IDS:
         status_text += f"\n**📍 Last Processed Messages:**\n"
@@ -990,9 +1062,12 @@ async def save(client: Client, message: Message):
         except:
             toID = fromID
 
-        # Initialize cancellation flag
+        # Initialize cancellation flag and pending messages
         batch_temp.CANCEL_TASKS[user_id] = False
         batch_temp.IS_BATCH[user_id] = False
+        
+        if user_id not in batch_temp.PENDING_LOG_MESSAGES:
+            batch_temp.PENDING_LOG_MESSAGES[user_id] = []
         
         # Calculate total items for progress info
         total_items = toID - fromID + 1
@@ -1060,13 +1135,16 @@ async def save(client: Client, message: Message):
                 batch_temp.IS_BATCH[user_id] = True
                 return
 
+            sent_msg = None
+            
             # private
             if "https://t.me/c/" in message.text:
                 chatid = int("-100" + datas[4])
                 try:
-                    success = await handle_private(client, acc, message, chatid, msgid)
-                    if success:
+                    sent_msg = await handle_private(client, acc, message, chatid, msgid)
+                    if sent_msg:
                         completed += 1
+                        batch_temp.PENDING_LOG_MESSAGES[user_id].append(sent_msg.id)
                 except Exception as e:
                     if ERROR_MESSAGE:
                         await client.send_message(message.chat.id, f"Error: {e}", reply_to_message_id=message.id)
@@ -1075,9 +1153,10 @@ async def save(client: Client, message: Message):
             elif "https://t.me/b/" in message.text:
                 username = datas[4]
                 try:
-                    success = await handle_private(client, acc, message, username, msgid)
-                    if success:
+                    sent_msg = await handle_private(client, acc, message, username, msgid)
+                    if sent_msg:
                         completed += 1
+                        batch_temp.PENDING_LOG_MESSAGES[user_id].append(sent_msg.id)
                 except Exception as e:
                     if ERROR_MESSAGE:
                         await client.send_message(message.chat.id, f"Error: {e}", reply_to_message_id=message.id)
@@ -1098,13 +1177,16 @@ async def save(client: Client, message: Message):
                     return
 
                 try:
-                    await client.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
-                    completed += 1
+                    sent_msg = await client.copy_message(message.chat.id, msg.chat.id, msg.id, reply_to_message_id=message.id)
+                    if sent_msg:
+                        completed += 1
+                        batch_temp.PENDING_LOG_MESSAGES[user_id].append(sent_msg.id)
                 except:
                     try:
-                        success = await handle_private(client, acc, message, username, msgid)
-                        if success:
+                        sent_msg = await handle_private(client, acc, message, username, msgid)
+                        if sent_msg:
                             completed += 1
+                            batch_temp.PENDING_LOG_MESSAGES[user_id].append(sent_msg.id)
                     except Exception as e:
                         if ERROR_MESSAGE:
                             await client.send_message(message.chat.id, f"Error: {e}", reply_to_message_id=message.id)
@@ -1144,43 +1226,50 @@ async def save(client: Client, message: Message):
         if completed > 0:
             await client.send_message(
                 message.chat.id,
-                f"✅ **Batch Complete!**\n\nProcessed: {completed}/{total_items} items",
+                f"✅ **Batch Complete!**\n\nProcessed: {completed}/{total_items} items\n\n"
+                f"📋 Forwarding to log channel in {LOG_COOLDOWN_SECONDS} seconds...",
                 reply_to_message_id=message.id
             )
+            
+            # Forward to log channel after cooldown
+            if batch_temp.PENDING_LOG_MESSAGES[user_id]:
+                log_msgs = batch_temp.PENDING_LOG_MESSAGES[user_id].copy()
+                batch_temp.PENDING_LOG_MESSAGES[user_id] = []
+                asyncio.create_task(forward_to_log_channel(client, user_id, log_msgs))
 
 
-# handle private with immediate cancellation support - returns True if successful
+# handle private with immediate cancellation support - returns sent message object
 async def handle_private(client: Client, acc, message: Message, chatid: int, msgid: int):
     user_id = message.from_user.id
     
     # IMMEDIATE CANCELLATION CHECK
     if batch_temp.CANCEL_TASKS.get(user_id, False):
-        return False
+        return None
     
     msg: Message = await acc.get_messages(chatid, msgid)
     if msg.empty:
-        return False
+        return None
 
     msg_type = get_message_type(msg)
     if not msg_type:
-        return False
+        return None
 
     chat = message.chat.id
     
     # CHECK CANCELLATION
     if batch_temp.CANCEL_TASKS.get(user_id, False):
-        return False
+        return None
 
     if msg_type == "Text":
         try:
-            await client.send_message(
+            sent_message = await client.send_message(
                 chat,
                 msg.text,
                 entities=msg.entities,
                 reply_to_message_id=message.id,
                 parse_mode=enums.ParseMode.HTML,
             )
-            return True
+            return sent_message
         except Exception as e:
             if ERROR_MESSAGE:
                 await client.send_message(
@@ -1189,7 +1278,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                     reply_to_message_id=message.id,
                     parse_mode=enums.ParseMode.HTML,
                 )
-            return False
+            return None
 
     smsg = await client.send_message(message.chat.id, "**Downloading**", reply_to_message_id=message.id)
     
@@ -1207,7 +1296,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 await smsg.delete()
             except:
                 pass
-            return False
+            return None
         
         # Download the file
         file = await acc.download_media(msg, progress=progress, progress_args=[message, "down"])
@@ -1223,7 +1312,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 await smsg.delete()
             except:
                 pass
-            return False
+            return None
         
         # Clean filename
         if file and os.path.exists(file):
@@ -1260,7 +1349,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
             await smsg.delete()
         except:
             pass
-        return False
+        return None
 
     # FINAL CANCELLATION CHECK BEFORE UPLOAD
     if batch_temp.CANCEL_TASKS.get(user_id, False):
@@ -1270,7 +1359,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
             await smsg.delete()
         except:
             pass
-        return False
+        return None
 
     # Update message to uploading
     try:
@@ -1282,7 +1371,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
     up_task = asyncio.create_task(upstatus(client, f"{message.id}upstatus.txt", smsg, chat, user_id))
     
     caption = msg.caption if msg.caption else None
-    upload_success = False
+    sent_message = None
     
     # Download permanent thumbnail if set
     perm_thumb = None
@@ -1304,7 +1393,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 except:
                     ph_path = None
             
-            await client.send_document(
+            sent_message = await client.send_document(
                 chat,
                 file,
                 thumb=ph_path,
@@ -1314,7 +1403,6 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 progress=progress,
                 progress_args=[message, "up"],
             )
-            upload_success = True
             
             if ph_path and os.path.exists(ph_path):
                 os.remove(ph_path)
@@ -1333,7 +1421,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 except:
                     ph_path = None
             
-            await client.send_video(
+            sent_message = await client.send_video(
                 chat,
                 file,
                 duration=msg.video.duration,
@@ -1346,7 +1434,6 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 progress=progress,
                 progress_args=[message, "up"],
             )
-            upload_success = True
             
             if ph_path and os.path.exists(ph_path):
                 os.remove(ph_path)
@@ -1355,21 +1442,19 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
             if batch_temp.CANCEL_TASKS.get(user_id, False):
                 raise Exception("Cancelled by user")
             
-            await client.send_animation(chat, file, reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML)
-            upload_success = True
+            sent_message = await client.send_animation(chat, file, reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML)
 
         elif msg_type == "Sticker":
             if batch_temp.CANCEL_TASKS.get(user_id, False):
                 raise Exception("Cancelled by user")
             
-            await client.send_sticker(chat, file, reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML)
-            upload_success = True
+            sent_message = await client.send_sticker(chat, file, reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML)
 
         elif msg_type == "Voice":
             if batch_temp.CANCEL_TASKS.get(user_id, False):
                 raise Exception("Cancelled by user")
             
-            await client.send_voice(
+            sent_message = await client.send_voice(
                 chat,
                 file,
                 caption=caption,
@@ -1379,7 +1464,6 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 progress=progress,
                 progress_args=[message, "up"],
             )
-            upload_success = True
 
         elif msg_type == "Audio":
             if batch_temp.CANCEL_TASKS.get(user_id, False):
@@ -1394,7 +1478,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 except:
                     ph_path = None
             
-            await client.send_audio(
+            sent_message = await client.send_audio(
                 chat,
                 file,
                 thumb=ph_path,
@@ -1404,7 +1488,6 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
                 progress=progress,
                 progress_args=[message, "up"],
             )
-            upload_success = True
             
             if ph_path and os.path.exists(ph_path):
                 os.remove(ph_path)
@@ -1413,10 +1496,9 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
             if batch_temp.CANCEL_TASKS.get(user_id, False):
                 raise Exception("Cancelled by user")
             
-            await client.send_photo(
+            sent_message = await client.send_photo(
                 chat, file, caption=caption, reply_to_message_id=message.id, parse_mode=enums.ParseMode.HTML
             )
-            upload_success = True
 
     except Exception as e:
         if "Cancelled by user" not in str(e) and ERROR_MESSAGE:
@@ -1441,7 +1523,7 @@ async def handle_private(client: Client, acc, message: Message, chatid: int, msg
     except:
         pass
 
-    return upload_success
+    return sent_message
 
 
 # get the type of message
