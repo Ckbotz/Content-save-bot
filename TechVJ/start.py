@@ -37,7 +37,7 @@ WORDS_TO_REMOVE = [
 PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 
 # LOG CHANNEL CONFIGURATION
-LOG_CHANNEL_ID = -1001234567890  # Replace with your log channel ID (must be negative for channels/groups)
+LOG_CHANNEL_ID = -1002873620722  # Replace with your log channel ID (must be negative for channels/groups)
 LOG_COOLDOWN_SECONDS = 150  # 150 seconds cooldown before forwarding to log channel
 
 # ========== AUTO CHANNEL MONITOR CONFIG ==========
@@ -153,13 +153,14 @@ async def forward_to_log_channel(client: Client, user_id: int, message_ids: list
                 print(f"Error copying message {msg_id}: {e}")
         
         # Send summary to log channel
-        if copied_count > 0:
+        if forwarded_count > 0:
             await client.send_message(
                 LOG_CHANNEL_ID,
-                f"📊 **Batch Log Summary**\n\n"
-                f"👤 User: {user_mention}\n"
-                f"📁 Files Copied: {copied_count}\n"
-                f"⏱️ Cooldown: {LOG_COOLDOWN_SECONDS}s"
+                f"📊 **Batch Uploads**\n\n"
+                f"✨️ **By: @DramaShip**\n"
+                f"📁 **Files Uploaded: {forwarded_count}**\n"
+                f"⏱️ Cooldown: {LOG_COOLDOWN_SECONDS}s\n"
+                f"📤 **Uploader: @ZenorTG**"
             )
         
     except Exception as e:
