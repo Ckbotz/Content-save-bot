@@ -37,13 +37,13 @@ WORDS_TO_REMOVE = [
 PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 
 # LOG CHANNEL CONFIGURATION
-LOG_CHANNEL_ID = -1001989242533  # Replace with your log channel ID (must be negative for channels/groups)
+LOG_CHANNEL_ID = -1002873620722  # Replace with your log channel ID (must be negative for channels/groups)
 LOG_COOLDOWN_SECONDS = 150  # 150 seconds cooldown before forwarding to log channel
 
 # ========== AUTO CHANNEL MONITOR CONFIG ==========
 # Add channel IDs to monitor (negative IDs for channels/groups)
 MONITOR_CHANNELS = [
-    -1001678405222,  # Replace with actual channel ID
+    -1001989242533,  # Replace with actual channel ID
     # Add more channel IDs here
 ]
 
