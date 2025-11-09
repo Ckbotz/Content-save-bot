@@ -159,8 +159,8 @@ async def forward_to_log_channel(client: Client, user_id: int, message_ids: list
                 f"📊 **Batch Uploads**\n\n"
                 f"✨️ **By: @DramaShip**\n"
                 f"📁 **Files Uploaded: {forwarded_count}**\n"
-                f"⏱️ Cooldown: {LOG_COOLDOWN_SECONDS}s"
-                f"📤 **Uploader: @ZenorTG**
+                f"⏱️ Cooldown: {LOG_COOLDOWN_SECONDS}s\n"
+                f"📤 **Uploader: @ZenorTG**"
             )
         
     except Exception as e:
