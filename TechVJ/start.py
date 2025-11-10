@@ -30,6 +30,7 @@ WORDS_TO_REMOVE = [
     "[MABLG]",
     "@DA_RIPS",
     "@Da_Rips",
+    "@Dramadictupdate",
     # Add more words here
 ]
 
@@ -37,7 +38,7 @@ WORDS_TO_REMOVE = [
 PERMANENT_THUMBNAIL_URL = "https://envs.sh/lga.jpg"
 
 # LOG CHANNEL CONFIGURATION
-LOG_CHANNEL_ID = -1002873620722  # Replace with your log channel ID (must be negative for channels/groups)
+LOG_CHANNEL_ID = -1003328703303  # Replace with your log channel ID (must be negative for channels/groups)
 LOG_COOLDOWN_SECONDS = 150  # 150 seconds cooldown before forwarding to log channel
 
 # ========== AUTO CHANNEL MONITOR CONFIG ==========
