@@ -44,7 +44,7 @@ LOG_COOLDOWN_SECONDS = 150  # 150 seconds cooldown before forwarding to log chan
 # ========== AUTO CHANNEL MONITOR CONFIG ==========
 # Add channel IDs to monitor (negative IDs for channels/groups)
 MONITOR_CHANNELS = [
-    -1003328703303,  # Replace with actual channel ID
+    -1003209828676,  # Replace with actual channel ID
     # Add more channel IDs here
 ]
 
