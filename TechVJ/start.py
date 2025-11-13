@@ -31,6 +31,7 @@ WORDS_TO_REMOVE = [
     "@DA_RIPS",
     "@Da_Rips",
     "@Dramadictupdate",
+    "@Dramadict",
     # Add more words here
 ]
 
