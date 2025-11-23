@@ -1,75 +1,64 @@
-# Don't Remove Credit Tg - @VJ_Botz
-# Subscribe YouTube Channel For Amazing Bot https://youtube.com/@Tech_VJ
-# Ask Doubt on telegram @KingVJ01
-
 from pyrogram import Client, idle
-from config import API_ID, API_HASH, BOT_TOKEN, STRING_SESSION, LOGIN_SYSTEM
+from config import API_ID, API_HASH, BOT_TOKEN
 import asyncio
 from aiohttp import web
+from pyrogram import utils as pyroutils
 
-# Create clients but don't start them yet
-if STRING_SESSION is not None and LOGIN_SYSTEM == False:
-    TechVJUser = Client(
-        "TechVJ",
-        api_id=API_ID,
-        api_hash=API_HASH,
-        session_string=STRING_SESSION
-    )
-else:
-    TechVJUser = None
+pyroutils.MIN_CHAT_ID = -999999999999
+pyroutils.MIN_CHANNEL_ID = -100999999999999
 
 
 class Bot(Client):
     def __init__(self):
         super().__init__(
-            "techvj login",
+            "techvj_bot",
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
-            plugins=dict(root="TechVJ"),
+            #plugins=dict(root="TechVJ"),
             workers=150,
             sleep_threshold=5
         )
 
     async def start(self):
         await super().start()
-        print('Bot Started ✅ Powered By @VJ_Botz')
+        print("🤖 Bot Started Successfully")
 
     async def stop(self, *args):
         await super().stop()
-        print('Bot Stopped 👋')
+        print("👋 Bot Stopped")
 
 
-# Simple web server for hosting (port 8080)
 async def handle(request):
     return web.Response(text="Bot is alive ✅")
 
-async def run_web_server():
+
+async def start_web_server():
     app = web.Application()
-    app.router.add_get('/', handle)
+    app.router.add_get("/", handle)
+
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
+
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
-    print("Web server running on port 8080 🌐")
+    print("🌐 Web server running on port 8080")
 
 
 async def main():
     bot = Bot()
+
+    print("Starting Services...")
     await bot.start()
 
-    if TechVJUser is not None:
-        await TechVJUser.start()
-        print("User Client Started ✅")
+    asyncio.create_task(start_web_server())
 
-    # Start web server
-    asyncio.create_task(run_web_server())
+    print("All services running ✔")
 
-    await idle()  # Keeps both running
+    await idle()   # <-- FIXED FOR PYROGRAM V2
 
     await bot.stop()
-    if TechVJUser is not None:
-        await TechVJUser.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
